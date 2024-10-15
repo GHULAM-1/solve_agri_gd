@@ -1,29 +1,57 @@
 import Link from "next/link"; // Import Next.js Link component
+import { useState, useEffect } from "react";
 import AnimateToView from "../AnimateToView";
+import { ServiceData } from "@/types/all-types";
+import qs from 'qs'; // Query string for URL construction
 
 const ServiceCat = () => {
-  const cats = [
-    {
-      name: "Advisory Services",
-      image: "/services/AS_S.jpg",
-      slug: "advisory-services",
-    },
-    {
-      name: "Project Consultancy...",
-      image: "/services/123.jpg",
-      slug: "community-development",
-    },
-    {
-      name: "SADI - Solve Agri &...",
-      image: "/services/training.jpeg",
-      slug: "solve-agri-and-dairy-institute",
-    },
-    {
-      name: "Agri Business",
-      image: "/services/cd.jpg",
-      slug: "agri-business",
-    },
-  ];
+  const [services, setServices] = useState<ServiceData[]>([]); // State to store the services fetched from Strapi
+  const [error, setError] = useState<string | null>(null); // State to handle errors
+
+  // Fetch services from Strapi API
+  useEffect(() => {
+    const fetchServices = async () => {
+      try {
+        const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:1337";
+        const path = "/api/services";
+
+        // Construct the query with 'populate' for fetching images
+        const query = qs.stringify({
+          populate: {
+            serviceImage: {
+              fields: ["url", "alternativeText"], // Fetch the image URL and alt text
+            },
+            heroImage: {
+              fields: ["url", "alternativeText"], // Fetch the hero image URL and alt text
+            },
+          },
+        });
+
+        const url = `${baseUrl}${path}?${query}`;
+        const response = await fetch(url);
+
+        if (!response.ok) {
+          throw new Error("Failed to fetch services");
+        }
+
+        const data = await response.json();
+
+        if (!Array.isArray(data.data)) {
+          throw new Error("Unexpected API response structure");
+        }
+
+        setServices(data.data); // Set fetched services to state
+      } catch (error: any) {
+        setError(error.message);
+      }
+    };
+
+    fetchServices();
+  }, []);
+
+  if (error) {
+    return <div>Error fetching services: {error}</div>;
+  }
 
   return (
     <div className="px-4 md:px-20 xl:px-40 md:py-20 py-10 w-full">
@@ -31,9 +59,9 @@ const ServiceCat = () => {
         <h1 className="md:text-[40px] text-[30px] mb-3 text-DG">Our Services.</h1>
       </AnimateToView>
       <div className="flex flex-col gap-12 mt-5">
-        <AnimateToView className=" flex w-full gap-4">
+        <AnimateToView className="flex w-full gap-4">
           <div className="h-[1px] ml-[-30px] mt-3 w-40 bg-DG" />
-          <p className=" text-DG md:text-xl font-light">
+          <p className="text-DG md:text-xl font-light">
             We are committed to offering dependable, high-quality solutions,
             services, and development projects that cater to all your livestock
             and dairy needs, regardless of the size of your operations. Our
@@ -43,28 +71,33 @@ const ServiceCat = () => {
             to thrive and maximize their profits.
           </p>
         </AnimateToView>
+
         <div className="md:flex grid grid-cols-2 gap-4 flex-wrap md:gap-10">
-          {cats.map((cat, index) => (
-            <div key={index} className="flex md:max-w-[200px] flex-col h-full justify-end">
-              <h1 className="md:text-lg text-DG">{cat.name}</h1>
-              <div>
-                <div className="w-full md:max-w-[200px] h-48 mt-2 rounded-lg mb-5 overflow-hidden">
-                  <img
-                    className="w-full h-full hover:scale-110 transition duration-200 cursor-pointer object-cover"
-                    src={cat.image}
-                    alt={cat.name}
-                  />
+          {services.length > 0 ? (
+            services.map((service, index) => (
+              <div key={index} className="flex md:max-w-[200px] flex-col h-full justify-end">
+                <h1 className="md:text-lg text-DG">{service.name}</h1>
+                <div>
+                  <div className="w-full md:max-w-[200px] h-48 mt-2 rounded-lg mb-5 overflow-hidden">
+                    <img
+                      src={`${process.env.NEXT_PUBLIC_API_URL}${service.heroImage?.url}`}
+                      alt={service.heroImage?.alternativeText || service.name}
+                      className="w-full h-full hover:scale-110 transition duration-200 cursor-pointer object-cover"
+                    />
+                  </div>
+                  <Link href={`/${service.documentId}`}>
+                    <button
+                      className="border border-green-600 text-green-600 bg-white py-2 px-12 rounded-full hover:bg-[#a8cf45] hover:text-white transition duration-300"
+                    >
+                      Learn more
+                    </button>
+                  </Link>
                 </div>
-                <Link href={`/${cat.slug}`}>
-                  <button
-                    className="border border-green-600 text-green-600 bg-white py-2 px-12 rounded-full hover:bg-[#a8cf45] hover:text-white transition duration-300"
-                  >
-                    Learn more
-                  </button>
-                </Link>
               </div>
-            </div>
-          ))}
+            ))
+          ) : (
+            <p>No services available at the moment.</p>
+          )}
         </div>
       </div>
     </div>

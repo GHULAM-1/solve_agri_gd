@@ -61,11 +61,20 @@ interface Product {
   };
   
   type ServiceData = {
-    image: string;
-    hero: {
-      image: string;
-      heading: string;
+    name?:string
+    serviceImage?: {
+      id: number;
+      alternativeText: string;
+      url: string;
     };
+    documentId?:string
+    heroImage?: {
+      id: number;
+      alternativeText: string;
+      url: string;
+    };
+      heroHeadings: string;
+    
     content: string;
     advertisement: string;
     about: string;

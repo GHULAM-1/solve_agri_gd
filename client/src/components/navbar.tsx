@@ -1,31 +1,265 @@
 'use client'; // Ensure this component is client-side only
 
 import { useState, useEffect } from "react";
-import { navLinks } from "@/data/navs";
-import Link from "next/link"; // Use Next.js Link
+import Link from "next/link";
 import { AiOutlineClose } from "react-icons/ai";
 import { RiMenu3Fill } from "react-icons/ri";
 import { AnimatePresence, motion } from "framer-motion";
-import Accordion from "./accordian";
 import { IoMdArrowDropdown } from "react-icons/io";
+import throttle from "lodash.throttle";
+import { navLinks as staticNavLinks } from "@/data/navs";
+import { ServiceData, Product } from "@/types/all-types"; // Updated with Product
+import { v4 as uuidv4 } from "uuid"; // For generating unique IDs
+import Accordion from "./accordian";
 
+// Define the type for navigation links
 type LinkWithChildren = {
   id: string;
   title: string;
   href: string;
-  children: {
-    id: string;
-    href: string;
-    title: string;
-  }[];
+  children?: LinkWithChildren[];
 };
 
-const MobileNav = () => {
+const Navbar = () => {
+  const [navLinks, setNavLinks] = useState<LinkWithChildren[]>(staticNavLinks);
+  const [pathname, setPathname] = useState(""); // Store the current path
+  const [lastScrollPos, setLastScrollPos] = useState(0);
+  const [isVisible, setIsVisible] = useState(false);
+  const [activeDropdown, setActiveDropdown] = useState<string | null>(null); // For tracking active dropdowns
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Fetch services from Strapi API
+  useEffect(() => {
+    const fetchServices = async () => {
+      try {
+        const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:1337";
+        const path = "/api/services";
+
+        const url = new URL(path, baseUrl);
+        const response = await fetch(url.toString());
+        if (!response.ok) {
+          throw new Error("Failed to fetch services");
+        }
+        const data = await response.json();
+
+        if (!Array.isArray(data.data)) {
+          throw new Error("Unexpected API response structure");
+        }
+
+        const services = data.data.map((service: ServiceData) => ({
+          id: uuidv4(), // Generate a unique ID
+          title: service.name,
+          href: `/${service.documentId}`,
+        }));
+
+        // Update the 'services' link in navLinks
+        setNavLinks((prevNavLinks) =>
+          prevNavLinks.map((link) =>
+            link.id === "services" ? { ...link, children: services } : link
+          )
+        );
+        setIsLoading(false);
+      } catch (error: any) {
+        console.error("Error fetching services:", error);
+        setError(error.message);
+        setIsLoading(false);
+      }
+    };
+
+    fetchServices();
+  }, []);
+
+  // Fetch products and categorize them by productCategory
+  useEffect(() => {
+    const fetchProducts = async () => {
+      try {
+        const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:1337";
+        const path = "/api/products";
+
+        const url = new URL(path, baseUrl);
+        const response = await fetch(url.toString());
+        if (!response.ok) {
+          throw new Error("Failed to fetch products");
+        }
+        const data = await response.json();
+
+        if (!Array.isArray(data.data)) {
+          throw new Error("Unexpected API response structure");
+        }
+
+        // Group products by category
+        const categories = data.data.reduce((acc: any, product: Product) => {
+          if (!acc[product.productCategory]) {
+            acc[product.productCategory] = [];
+          }
+          acc[product.productCategory].push({
+            id: uuidv4(), // Generate a unique ID for each child
+            title: product.productTitle,
+            href: `/product/category/${product.productCategory}`, // Correct link
+          });
+          return acc;
+        }, {});
+
+        const productCategories = Object.keys(categories).map((category) => ({
+          id: uuidv4(), // Generate a unique ID for each category
+          title: category,
+          href: `/product/category/${category}`, // Redirect to category
+          children: categories[category],
+        }));
+
+        // Update the 'all products' link in navLinks
+        setNavLinks((prevNavLinks) =>
+          prevNavLinks.map((link) =>
+            link.id === "all-products" ? { ...link, children: productCategories } : link
+          )
+        );
+      } catch (error: any) {
+        console.error("Error fetching products:", error);
+        setError(error.message);
+      }
+    };
+
+    fetchProducts();
+  }, []);
+
+  // Set the current pathname
+  useEffect(() => {
+    setPathname(window.location.pathname);
+  }, []);
+
+  // Handle scroll to show/hide navbar with throttling
+  const handleScroll = () => {
+    const currentScrollPos = window.scrollY;
+    if (pathname !== "/") {
+      setIsVisible(true);
+      return;
+    }
+    setIsVisible(!(lastScrollPos > currentScrollPos && currentScrollPos < 100));
+    setLastScrollPos(currentScrollPos);
+  };
+
+  useEffect(() => {
+    const throttledHandleScroll = throttle(handleScroll, 200); // 200ms throttle
+
+    window.addEventListener("scroll", throttledHandleScroll);
+
+    return () => {
+      window.removeEventListener("scroll", throttledHandleScroll);
+      throttledHandleScroll.cancel();
+    };
+  }, [lastScrollPos, pathname]);
+
+  // Handle hover events for dropdowns
+  const handleMouseOver = (linkId: string) => {
+    setActiveDropdown(linkId);
+  };
+
+  const handleMouseLeave = () => {
+    setActiveDropdown(null);
+  };
+
+  // Dropdown component for desktop navigation
+  const LinkDropdown = ({ link }: { link: LinkWithChildren }) => {
+    const isOpen = activeDropdown === link.id; // Check if the dropdown is active
+
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={isOpen ? { opacity: 1, y: 0 } : { opacity: 0, y: 10 }}
+        transition={{ ease: "circOut", duration: 0.15 }}
+        className="absolute top-full left-0 mt-2 rounded-md shadow-lg bg-white z-50"
+      >
+        <div className="py-1">
+          {link.children?.map((c) => (
+            <Link
+              key={c.id} // Now each child has a unique ID
+              href={c.href}
+              className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+            >
+              {c.title}
+            </Link>
+          ))}
+        </div>
+      </motion.div>
+    );
+  };
+
+  // Show loading or error states
+  if (isLoading) {
+    return (
+      <header className="mt-5 mx-5 rounded-full flex flex-col transition duration-200 ease-in-out z-50">
+        <div className="w-full flex justify-center py-4">
+          <p>Loading...</p>
+        </div>
+      </header>
+    );
+  }
+
+  if (error) {
+    return (
+      <header className="mt-5 mx-5 rounded-full flex flex-col transition duration-200 ease-in-out z-50">
+        <div className="w-full flex justify-center py-4">
+          <p>Error: {error}</p>
+        </div>
+      </header>
+    );
+  }
+
+  return (
+    <header
+      className={`${
+        isVisible ? "bg-white border" : "pt-5"
+      } mt-5 mx-5 rounded-full flex flex-col transition duration-200 ease-in-out z-50`}
+    >
+      <nav className="w-full flex py-3 items-center justify-between border-gray-200 px-4 xl:px-24">
+        {/* Logo */}
+        <Link href="/" className="min-w-max">
+          <img src="/logo.png" alt="logo" className="h-[60px]" />
+        </Link>
+
+        {/* Desktop Navigation */}
+        <div className="w-full hidden md:block">
+          <ul id="desktop-nav" className="w-full flex justify-center space-x-8">
+            {navLinks.map((link) => {
+              const isActive = pathname === link.href;
+              return (
+                <div
+                  id={link.id}
+                  key={link.id}
+                  className={`${
+                    isActive
+                      ? "text-green-500"
+                      : `${isVisible ? "text-black" : "text-black opacity-85"} hover:text-green-500`
+                  } relative p-3 text-xs lg:text-sm whitespace-nowrap tracking-wide font-poppins font-medium cursor-pointer transition-all nav-links`}
+                  onMouseEnter={() => handleMouseOver(link.id)}
+                  onMouseLeave={handleMouseLeave}
+                >
+                  <Link href={link.href} className="uppercase flex items-center font-semibold text-sm py-2">
+                    <span className="text-xs">{link.title}</span>
+                    {link.children && <IoMdArrowDropdown size={16} className="ml-1" />}
+                  </Link>
+                  {link.children && <LinkDropdown link={link} />}
+                </div>
+              );
+            })}
+          </ul>
+        </div>
+
+        {/* Mobile Navigation */}
+        <MobileNav navLinks={navLinks} />
+      </nav>
+    </header>
+  );
+};
+
+// Nested MobileNav Component
+const MobileNav = ({ navLinks }: { navLinks: LinkWithChildren[] }) => {
   const [isOpen, setIsOpen] = useState(false);
-  const [openIndex, setOpenIndex] = useState(-1);
+  const [openIndex, setOpenIndex] = useState<number | null>(null);
 
   const onBeforeNavigate = () => {
-    setOpenIndex(-1);
+    setOpenIndex(null);
     setIsOpen(false);
   };
 
@@ -39,10 +273,13 @@ const MobileNav = () => {
   };
 
   useEffect(() => {
-    window.addEventListener("scroll", handleScroll);
+    const throttledHandleScroll = throttle(handleScroll, 200); // 200ms throttle
+
+    window.addEventListener("scroll", throttledHandleScroll);
 
     return () => {
-      window.removeEventListener("scroll", handleScroll);
+      window.removeEventListener("scroll", throttledHandleScroll);
+      throttledHandleScroll.cancel();
     };
   }, [lastScrollPos]);
 
@@ -71,55 +308,37 @@ const MobileNav = () => {
                 initial={{ y: 32 }}
                 animate={{ y: 0 }}
                 transition={{ ease: "easeOut", duration: 0.15 }}
-                className="w-full flex flex-col"
+                className="w-full flex flex-col mt-4"
               >
                 {navLinks.map((link, i) => (
-                  <div key={link.id} className="flex flex-col w-full">
-                    {i !== 0 && (
-                      <div className="h-[2px] bg-gray-200 w-1/2 self-center my-[6px]" />
-                    )}
-                    {link.children ? (
+                  <div key={link.id} className="flex flex-col w-full mb-2">
+                    {i !== 0 && <div className="h-[2px] bg-gray-200 w-1/2 self-center my-2" />}
+                    {link.children && link.children.length > 0 ? (
                       <Accordion
-                        data={{
-                          title: (
+                        title={
+                          <Link onClick={onBeforeNavigate} href={link.href} className="hover:text-green-500 text-gray-600 transition-all flex justify-between items-center">
+                            {link.title}
+                            <IoMdArrowDropdown size={16} />
+                          </Link>
+                        }
+                        isOpen={openIndex === i}
+                        onClick={() => (openIndex === i ? setOpenIndex(null) : setOpenIndex(i))}
+                      >
+                        <div className="ml-4 mt-2">
+                          {link.children.map((c) => (
                             <Link
                               onClick={onBeforeNavigate}
-                              href={link.href}
-                              className="hover:text-green-500 text-gray-600 transition-all"
+                              key={c.id}
+                              href={c.href}
+                              className="block py-1 text-gray-700 hover:text-green-500"
                             >
-                              {link.title}
+                              {c.title}
                             </Link>
-                          ),
-                          content: (
-                            <div className="flex w-full my-3 text-sm text-gray-500">
-                              <div className="w-[2px] bg-gray-300 mx-3 py-8" />
-                              <div className="w-full">
-                                {link.children.map((c) => (
-                                  <Link
-                                    onClick={onBeforeNavigate}
-                                    key={c.id}
-                                    href={c.href}
-                                    className="w-full max-w-[200px] h-10 flex items-center hover:text-green-500 transition-all"
-                                  >
-                                    {c.title}
-                                  </Link>
-                                ))}
-                              </div>
-                            </div>
-                          ),
-                        }}
-                        isOpen={i === openIndex}
-                        onClick={() =>
-                          i === openIndex ? setOpenIndex(-1) : setOpenIndex(i)
-                        }
-                      />
+                          ))}
+                        </div>
+                      </Accordion>
                     ) : (
-                      <Link
-                        onClick={onBeforeNavigate}
-                        key={link.id}
-                        href={link.href}
-                        className="w-full max-w-[200px] flex items-center text-gray-700 hover:text-green-500 transition-all"
-                      >
+                      <Link onClick={onBeforeNavigate} key={link.id} href={link.href} className="w-full flex items-center text-gray-700 hover:text-green-500 transition-all">
                         {link.title}
                       </Link>
                     )}
@@ -127,127 +346,13 @@ const MobileNav = () => {
                 ))}
               </motion.nav>
             </div>
-            <Link
-              href="/"
-              onClick={onBeforeNavigate}
-              className="min-w-max self-center mt-8 grayscale"
-            >
-              <img src="/logo.png" alt="logo" className="h-24s" />
+            <Link href="/" onClick={onBeforeNavigate} className="min-w-max self-center mt-8 grayscale">
+              <img src="/logo.png" alt="logo" className="h-24" />
             </Link>
           </motion.div>
         )}
       </AnimatePresence>
     </div>
-  );
-};
-
-const Navbar = () => {
-  const [pathname, setPathname] = useState(""); // Store the pathname
-
-  const [lastScrollPos, setLastScrollPos] = useState(0);
-  const [isVisible, setIsVisible] = useState(false);
-  const [activeEle, setActiveEle] = useState<Element | null>(null);
-
-  useEffect(() => {
-    // Set the pathname using window.location.pathname in useEffect (client-side only)
-    setPathname(window.location.pathname);
-  }, []);
-
-  const handleScroll = () => {
-    const currentScrollPos = window.scrollY;
-    if (pathname !== "/") {
-      setIsVisible(true);
-      return;
-    }
-    setIsVisible(!(lastScrollPos > currentScrollPos && currentScrollPos < 100));
-    setLastScrollPos(currentScrollPos);
-  };
-
-  useEffect(() => {
-    window.addEventListener("scroll", handleScroll);
-
-    return () => {
-      window.removeEventListener("scroll", handleScroll);
-    };
-  }, [lastScrollPos]);
-
-  useEffect(() => {
-    const linkEles = document.getElementsByClassName("nav-links");
-    for (let i = 0; i < linkEles.length; i++) {
-      const ele = linkEles.item(i);
-      ele?.addEventListener("mouseover", () => setActiveEle(ele));
-      ele?.addEventListener("mouseleave", () => setActiveEle(null));
-    }
-  }, []);
-
-  const LinkDropdown = ({ link }: { link: LinkWithChildren }) => {
-    const isOpen = activeEle?.id === link.id;
-    return (
-      <motion.dialog
-        id={link.id}
-        open={isOpen}
-        animate={{ opacity: 1.0, y: 0 }}
-        initial={{ opacity: 0, y: 32 }}
-        transition={{ ease: "circOut", duration: 0.15 }}
-        className="px-0 rounded-xl z-[100] overflow-hidden min-w-max rounded-b-md shadow-xl shadow-black/[0.2] bg-white "
-      >
-        {link.children.map((c) => (
-          <Link
-            key={c.id}
-            href={c.href}
-            className="w-full px-6 whitespace-nowrap text-xs h-10 flex items-center hover:text-green-500 hover:bg-gray-100 transition-all"
-          >
-            {c.title}
-          </Link>
-        ))}
-      </motion.dialog>
-    );
-  };
-
-  return (
-    <header
-      className={`${
-        isVisible ? "bg-white border" : "pt-5"
-      } mt-5 mx-5 rounded-full flex flex-col transition duration-200 ease-in-out z-50`}
-    >
-      <nav className="w-full flex py-3 items-center justify-between border-gray-200 px-4 xl:px-24">
-        <Link href="/" className="min-w-max">
-          <img src="/logo.png" alt="logo" className="h-[60px]" />
-        </Link>
-        <div className="w-full hidden md:block">
-          <ul id="desktop-nav" className="w-full flex justify-center">
-            {navLinks.map((link) => {
-              const isActive = pathname === link.href;
-              return (
-                <div
-                  id={link.id}
-                  key={link.id}
-                  className={`${
-                    isActive
-                      ? "text-green-500"
-                      : `${
-                          isVisible ? "text-black" : "text-black opacity-85"
-                        } hover:text-green-500`
-                  } relative p-3 text-xs lg:text-sm whitespace-nowrap tracking-wide font-poppins font-medium cursor-pointer transition-all nav-links `}
-                >
-                  <Link
-                    href={link.href}
-                    className="uppercase flex items-center font-semibold text-sm py-2"
-                  >
-                    <p className="text-xs">{link.title}</p>
-                    {link.children && <IoMdArrowDropdown size={16} />}
-                  </Link>
-                  {link.children && <LinkDropdown key={link.id} link={link} />}
-                </div>
-              );
-            })}
-          </ul>
-        </div>
-
-        <div className="lg:hidden" />
-        <MobileNav />
-      </nav>
-    </header>
   );
 };
 

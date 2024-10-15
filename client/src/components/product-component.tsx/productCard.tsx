@@ -10,7 +10,7 @@ export default function ProductCard({ product }: { product: Product }) {
   return (
     <Link
       href={`/product/${product.documentId}`} // Next.js routing
-      className="w-full flex flex-col gap-8 cursor-pointer mx-44 items-center"
+      className="w-full flex flex-col gap-8 cursor-pointer  items-center"
     >
       <div className="max-w-full overflow-hidden rounded-xl aspect-square">
         <img

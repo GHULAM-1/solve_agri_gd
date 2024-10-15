@@ -1,90 +1,103 @@
-'use client';
-
-import axios from "axios";
+'use client'
 import { useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation"; // For getting query params in app directory
-import { PageInfo, Product, Project } from "@/types/all-types";
-import ProductCard from "@/components/product-component.tsx/productCard"; // Adjust the import path
+import qs from "qs";
+
 import Skeleton from "react-loading-skeleton";
 import "react-loading-skeleton/dist/skeleton.css";
+import ProductCard from "@/components/product-component.tsx/productCard"; // Import the separate ProductCard component
+import { Product } from "@/types/all-types";
 
-export default async function ProductsPage() {
-  const searchParams = useSearchParams();
-  const category = searchParams.get("category") || "all";
-  const subcategory = searchParams.get("subcategory") || "all";
-  const limit = parseInt(searchParams.get("limit") || "20", 10);
+// Fetch products with populated images from Strapi
+async function getProducts(page: number): Promise<{ products: Product[]; total: number }> {
+  const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:1337";
+  const path = "/api/products";
 
-  const [pageInfo, setPageInfo] = useState<PageInfo>();
-  const [products, setProducts] = useState<Product[] | Project[]>([]);
+  const url = new URL(path, baseUrl);
+
+  // Use qs to populate the image and request more products by setting pageSize
+  url.search = qs.stringify({
+    populate: {
+      productImage: {
+        fields: ["alternativeText", "url"], // Fetch image URL and alt text
+      },
+    },
+    pagination: {
+      page: page, // Fetch the current page of products
+      pageSize: 2, // Set to 1 to fetch only 1 product per page
+    },
+  });
+
+  const res = await fetch(url.toString());
+
+  if (!res.ok) throw new Error("Failed to fetch products");
+
+  const data = await res.json();
+  const total = data.meta.pagination.total; // Get total number of products
+
+  return { products: data.data, total };
+}
+
+export default function ProductsPage() {
+  const [page, setPage] = useState(1); // Track the current page
+  const [products, setProducts] = useState<Product[]>([]);
+  const [total, setTotal] = useState(0); // Track total number of products
   const [loading, setLoading] = useState(true);
 
-  // useEffect(() => {
-  //   fetchProducts();
-  // }, [category, subcategory, limit]);
+  // Fetch products when the page changes
+  const fetchProducts = async (page: number) => {
+    setLoading(true);
+    const { products, total } = await getProducts(page);
+    console.log(products)
+    setProducts(products);
+    setTotal(total);
+    setLoading(false);
+  };
 
-  // async function fetchProducts() {
-  //   setLoading(true);
-  //   try {
-  //     const res = await axios.get(
-  //       `${process.env.NEXT_PUBLIC_BASE_URI}/products?category=${category}&subcategory=${subcategory}&limit=${limit}`
-  //     );
-  //     const data = res.data;
-  //     setPageInfo({
-  //       currentPage: data.currentPage,
-  //       totalPages: data.totalPages,
-  //     });
-  //     setProducts(data.products);
-  //   } catch (error) {
-  //     console.error("Error fetching products:", error);
-  //   }
-  //   setLoading(false);
-  // }
+  // Fetch products on initial load and page change
+  useEffect(() => {
+    fetchProducts(page);
+  }, [page]);
 
-  async function getTeamMembers() {
-    const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:1337";
-    const path = "/api/products";
-  
-    const url = new URL(path, baseUrl);
-  
-    const res = await fetch(url);
-  
-    if (!res.ok) throw new Error("Failed to fetch team members");
-  
-    const data = await res.json();
-    console.log(data);
-  
-    return data;
-  }
-  
-  
-    const teamMembers = await getTeamMembers();
-    console.log(teamMembers);
-  
-    
-    return (
-      <>
-        <main className="w-full my-40 px-4 md:px-20 xl:px-40 grid gap-x-8 gap-y-16 grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {loading
-            ? Array.from({ length: limit }).map((_, index) => (
-                <div key={index} className="animate-pulse">
-                  <Skeleton height={250} className="mb-3" width={230} />
-                  <Skeleton count={2} width={230} />
-                </div>
-              ))
-            : products.map((p) => (
-                <ProductCard key={p._id} product={p as Product} />
-              ))}
-          {products.length === 0 && !loading && (
-            <div className="text-2xl font-medium">No products found</div>
-          )}
-        </main>
-        {pageInfo && (
-          <div className="flex justify-center mt-10">
-            {/* Add pagination buttons here based on pageInfo */}
-          </div>
+  const totalPages = Math.ceil(total / 2); // Calculate total pages (1 product per page)
+
+  return (
+    <div className="mt-36 text-center">
+      <h1 className="text-3xl font-bold mb-8">Our Products</h1>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+        {loading ? (
+          <Skeleton count={1} height={500} width={500} />
+        ) : (
+          products.map((product: Product) => (
+            <ProductCard key={product.id} product={product} />
+          ))
         )}
-      </>
-    );
-  }
+      </div>
 
+      {/* Pagination controls */}
+      <div className="flex justify-center mt-8">
+        <button
+          onClick={() => setPage((prev) => Math.max(prev - 1, 1))}
+          disabled={page === 1}
+          className="px-4 py-2 bg-LG hover:bg-gray-300 rounded mr-2"
+        >
+          Previous
+        </button>
+        <button
+          onClick={() => setPage((prev) => (prev < totalPages ? prev + 1 : prev))}
+          disabled={page === totalPages}
+          className="px-4 py-2 bg-gray-300  hover:bg-LG rounded hover:"
+        >
+          Next
+        </button>
+      </div>
 
+      {/* Page number display */}
+      <div className="mt-4 text-center">
+        <p>
+          Page {page} of {totalPages}
+        </p>
+      </div>
+    </div>
+  );
+}

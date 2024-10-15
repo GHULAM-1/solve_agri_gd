@@ -1,13 +1,15 @@
 /** @type {import('next').NextConfig} */
-const nextConfig = {images: {
+const nextConfig = {
+  images: {
     remotePatterns: [
       {
-        protocol: 'https',
-        hostname: 'res.cloudinary.com',
-        port: '',
-        pathname: '/**', // Allow all images from Cloudinary
+        protocol: "http",
+        hostname: "localhost",
+        port: "1337",
+        pathname: "/uploads/**/*", // Make sure to match the correct path from Strapi
       },
     ],
-  },};
+  },
+};
 
 export default nextConfig;

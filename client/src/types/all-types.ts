@@ -1,31 +1,45 @@
-type Product = {
-    _id?: string;
-    title: string;
-    description: string;
-    price: number | null;
-    SKU: string;
-    image: string;
-    category: string;
-    subcategory: string;
-    createdAt?: string;
-    updatedAt?: string;
+interface Product {
+  id?:number
+  pid: string;
+  productTitle: string;
+  productDescription: string;
+  productPrice: number;
+  SKU: string;
+  createdAt: string;
+  updatedAt: string;
+  publishedAt: string;
+  productCategory:string
+  productSubCategory:string
+  locale: string;
+  documentId?:string
+  productImage?: {
+    id: number;
+    alternativeText: string;
+    url: string;
   };
+}
+
   
   type PageInfo = {
     totalPages: number;
     currentPage: number;
   };
   
-  type Project = {
-    _id?: string;
-    title: string;
-    header: string;
-    subtitle: string;
+  interface Project {
+    projId?: string;
+    projTitle: string;
+    projHeader: string;
+    projSubTitle: string;
+    projImage?: {
+      id: number;
+      alternativeText: string;
+      url: string;
+    };
     html: string;
-    images: string[];
-    category: string;
-    createdAt?: string;
-    updatedAt?: string;
+    projCategory: string;
+    documentId?:string
+    // createdAt?: string;
+    // updatedAt?: string;
   };
   
   type User = {
